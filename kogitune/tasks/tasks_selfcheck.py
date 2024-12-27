@@ -8,8 +8,23 @@ class SelfCheckGPT(TextGeneration):
         super().__init__(**kwargs)
         self.name = 'selfcheck'
         
-    def apply_template(self, sample: dict, template: dict):
+    def apply_template(self, sample:dict, template:dict):
         sample["_input"] = self.format(template, "prompt", sample)
+
+    def eval(self, model, samples: List[dict]):
+        input_texts = self.column_values(samples, "_input")
+        gen_args = model.filter_gen_args(**self.init_kwargs)
+
+        output_texts = model.generate(input_texts, _n=1, _do_sample=False, **gen_args)
+        self.update_values(samples, {"_output": output_texts})
+
+        n = adhoc.get(gen_args, "num_return_sequences|n|=6")
+        if "temperature" not in gen_args:
+            adhoc.verbose_print("temperatureを設定してね. temperature=1.0", once="temperature=1.0")
+            gen_args["temperature"] = 1.0
+        output_texts = model.generate(input_texts, self.progress_bar, _n=n, _do_sample=True, **gen_args)
+        self.update_kwargs(samples, _model=model.modeltag, _task=self.name)
+        self.update_values(samples, {"_samples": output_texts})
 
     def calc(self, metric, samples: List[dict]):
         # 必ず_extractedを使用してメトリクスを計算

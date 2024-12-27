@@ -34,3 +34,4 @@ class SelfCheckGPT(TextGeneration):
         results = metric.calc(candidates, list_samples)
         self.update_values(samples, results)
         return results
+

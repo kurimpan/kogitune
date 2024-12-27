@@ -17,7 +17,7 @@ class TaskLoader(adhoc.AdhocLoader):
 
 TaskLoader(TASK_MAP).register("task")
 
-def fmt(template:str, sample:dict):
+def fmt(template: str, sample: dict):
     return template.format(**sample)
 
 class Task(adhoc.AdhocObject):
@@ -44,7 +44,7 @@ class Task(adhoc.AdhocObject):
         name = self.name if hasattr(self, "name") else self.path
         return self.tag if self.tag != '' else name
 
-    def start_progress_bar(self, total:int, desc:str=None):
+    def start_progress_bar(self, total: int, desc: str = None):
         self.progress_bar = adhoc.progress_bar(total=total, desc=desc)
 
     def end_progress_bar(self):
@@ -70,9 +70,13 @@ class Task(adhoc.AdhocObject):
                     self.extractor = adhoc.load('pattern', template['extract_pattern'])
         return template
 
-    def prepare(self, samples: List[dict]):
+    def prepare(self, samples: List[dict], resume: bool = False):
         template = self.update_from_template(samples)
         for sample in samples:
+            # resume=Trueの場合、_extractedが既に存在していればスキップ
+            if resume and "_extracted" in sample and sample["_extracted"] is not None:
+                continue
+
             if template:
                 try:
                     self.apply_template(sample, template)
@@ -89,9 +93,9 @@ class Task(adhoc.AdhocObject):
     
     def set_few_shots(self):
         if self.heading_messages and self.shots > 0:
-            if self.shots *2 != len(self.heading_messages):
-                self.heading_messages = self.heading_messages[:self.shots*2]
-                shots = len(self.heading_messages)//2
+            if self.shots * 2 != len(self.heading_messages):
+                self.heading_messages = self.heading_messages[:self.shots * 2]
+                shots = len(self.heading_messages) // 2
                 if self.shots == shots:
                     return
                 # 再調整
@@ -99,8 +103,7 @@ class Task(adhoc.AdhocObject):
                 self.name = f'{self.shots}-shot'
                 adhoc.verbose_print(f'{self.shots}-shot//ショット', dump=self.heading_messages)
 
-
-    def apply_template(self, sample:dict, template:dict):
+    def apply_template(self, sample: dict, template: dict):
         pass
 
     def format(self, template, key, sample):
@@ -112,12 +115,12 @@ class Task(adhoc.AdhocObject):
         adhoc.print(adhoc.dump(sample), face='')
         adhoc.exit(throw=ValueError(f"{self.name}タスク用のテンプレートがありません。"))
 
-
     def eval(self, model, samples: List[dict]):
         pass
 
     def calc(self, metric: Metric, samples: List[dict]):
-        candidates = self.column_values(samples, "_output")
+        # `_extracted`列を利用
+        candidates = self.column_values(samples, "_extracted")
         references = self.column_values(samples, "_reference")
         results = metric.calc(candidates, references)
         self.update_values(samples, results)
@@ -127,10 +130,10 @@ class Task(adhoc.AdhocObject):
     def default_metrics(self):
         return []
 
-    def column_values(self, samples: List[dict], key:str):
+    def column_values(self, samples: List[dict], key: str):
         return [sample[key] for sample in samples]
 
-    def update_kwargs(self, samples:List[dict], /, **kwargs):
+    def update_kwargs(self, samples: List[dict], /, **kwargs):
         items = list(kwargs.items())
         for sample in samples:
             for k, v in items:
@@ -160,24 +163,25 @@ class Task(adhoc.AdhocObject):
             TASK_MAP[scheme] = cls
 
 
-def task_eval(model_list: List[str], metrics:List[str], /, **kwargs):
+def task_eval(model_list: List[str], metrics: List[str], /, **kwargs):
     # タスクをロードしておきます。
     from .tasks_textgen import TextGeneration
     from .tasks_choice import QAChoice
     from ..loads import Metric
 
-    board:LeaderBoard = adhoc.load('from_kwargs', 'leaderboard', **kwargs)
+    board: LeaderBoard = adhoc.load('from_kwargs', 'leaderboard', **kwargs)
     save_step = adhoc.get(kwargs, "save_steps|save_step")
     if save_step:
-        kwargs["_resume"] = True # 前の続きから実行する (ただし、resumeが優先)
-    task:Task = adhoc.load('task', adhoc.get(kwargs, 'task|='))
+        kwargs["_resume"] = True  # 前の続きから実行する (ただし、resumeが優先)
+    task: Task = adhoc.load('task', adhoc.get(kwargs, 'task|='))
 
     for model_path in model_list:
-        model : Model = adhoc.load("model", model_path, _lazy = True, **kwargs)
+        model: Model = adhoc.load("model", model_path, _lazy=True, **kwargs)
         for taskdata in list_testdata(model.modeltag, task.tasktag, **kwargs):
             # 未処理のサンプルのみ対象にする
             samples = [sample for sample in taskdata.samples() 
                        if sample.get("_model") != model.modeltag]
+
             if len(samples) > 0:   
                 head = adhoc.get(kwargs, "test_run|head")
                 if head:
@@ -188,13 +192,14 @@ def task_eval(model_list: List[str], metrics:List[str], /, **kwargs):
                 with VerboseCounter(**kwargs) as verbose:
                     task.start_progress_bar(total=len(samples), desc=model.modeltag)
                     for start in range(0, len(samples), save_step):
-                        splited_samples = samples[start:start+save_step]
-                        task.prepare(splited_samples)
+                        splited_samples = samples[start:start + save_step]
+                        # resume フラグを渡す
+                        task.prepare(splited_samples, resume=kwargs.get("_resume", False))
                         task.eval(model, splited_samples)
                         taskdata.save()
                         verbose.print_sample(splited_samples)
                     task.end_progress_bar()
-            
+
             if len(metrics) == 0:
                 metrics = task.default_metrics
 
@@ -203,7 +208,7 @@ def task_eval(model_list: List[str], metrics:List[str], /, **kwargs):
             if len(samples) == 0:
                 adhoc.verbose_print("ひとつも生成されてないね")
                 break
-            task.update_from_template(samples) # extractor の再読み込み
+            task.update_from_template(samples)  # extractor の再読み込み
             for metric_path in listfy(metrics):
                 if metric_path == "none": 
                     break
@@ -227,7 +232,7 @@ def list_testdata(modeltag, tasktag, /, **kwargs):
                 kwargs['dataset_subset'] = load_dataset_names(path)
             if largs.get('name') != '*':
                 for subset_name in adhoc.get_list(kwargs, f"dataset_subset"):
-                    taskdata = load_taskdata(path, **(kwargs|{'_name': subset_name}))
+                    taskdata = load_taskdata(path, **(kwargs | {'_name': subset_name}))
                     yield taskdata
                 continue
         taskdata = load_taskdata(path, **kwargs)
@@ -270,7 +275,7 @@ def load_taskdata(path, /, **kwargs):
     adhoc.saved(save_path, f'Results//実験結果 {(modeltag, datatag, task)}')
     return record
 
-def calc_leaderboard(files: Union[List[str], str], names:Union[List[str], str] = None, /, **kwargs):
+def calc_leaderboard(files: Union[List[str], str], names: Union[List[str], str] = None, /, **kwargs):
     board: LeaderBoard = adhoc.load('from_kwargs', 'leaderboard', **kwargs)
 
     for path in listfy(files):

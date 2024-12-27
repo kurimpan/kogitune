@@ -88,6 +88,10 @@ class Task(adhoc.AdhocObject):
             else:
                 self.transform(sample)
 
+            # extractorを適用して_extracted列を更新
+            if self.extractor is not None:
+                sample["_extracted"] = self.extractor.extract(sample["_output"])
+
     def guess_template(self, sample):
         return guess_template(sample)
     

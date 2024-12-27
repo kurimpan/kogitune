@@ -27,6 +27,7 @@ class SelfCheckGPT(TextGeneration):
         self.update_values(samples, {"_samples": output_texts})
 
     def calc(self, metric, samples: List[dict]):
+        # 基本形を維持しつつ_extractedを使用するよう修正
         candidates = self.column_values(samples, "_output")
         list_samples = self.column_values(samples, "_samples")
         if self.extractor:
@@ -40,6 +41,7 @@ class SelfCheckGPT(TextGeneration):
             adhoc.verbose_print("extracted", candidates[0], list_samples[0], once='extracted')
         else:
             adhoc.verbose_print("extractorが設定されてないね", once='extracted')
-        results = metric.calc(candidates, list_samples)
+        # _outputの代わりに_extractedを利用
+        results = metric.calc(self.column_values(samples, "_extracted"), list_samples)
         self.update_values(samples, results)
         return results

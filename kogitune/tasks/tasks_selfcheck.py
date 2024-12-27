@@ -27,21 +27,10 @@ class SelfCheckGPT(TextGeneration):
         self.update_values(samples, {"_samples": output_texts})
 
     def calc(self, metric, samples: List[dict]):
-        # 基本形を維持しつつ_extractedを使用するよう修正
-        candidates = self.column_values(samples, "_output")
+        # 必ず_extractedを使用してメトリクスを計算
+        candidates = self.column_values(samples, "_extracted")
         list_samples = self.column_values(samples, "_samples")
-        if self.extractor:
-            candidates = [self.extractor.extract(c)[-1] for c in candidates]
-            self.update_values(samples, {"_extracted": candidates})
-            _list_samples = []
-            for _samples in list_samples:
-                _samples = [self.extractor.extract(c)[-1] for c in _samples]
-                _list_samples.append(_samples)
-            list_samples = _list_samples
-            adhoc.verbose_print("extracted", candidates[0], list_samples[0], once='extracted')
-        else:
-            adhoc.verbose_print("extractorが設定されてないね", once='extracted')
-        # _outputの代わりに_extractedを利用
-        results = metric.calc(self.column_values(samples, "_extracted"), list_samples)
+        adhoc.verbose_print("Using pre-extracted values", candidates[0], list_samples[0], once='extracted')
+        results = metric.calc(candidates, list_samples)
         self.update_values(samples, results)
         return results

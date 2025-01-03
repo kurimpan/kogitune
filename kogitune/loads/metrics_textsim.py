@@ -359,4 +359,3 @@ class CodeBERT(BERTScore):
         self.lang = "en"
         self.num_layers=12 # CodeBERTのレイヤー数を指定（通常12レイヤーです）
         self.lang = kwargs.get("lang", "en")
-
